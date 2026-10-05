@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+
 from datasets import load_dataset
 
 LABEL_NAMES = {
@@ -15,32 +16,53 @@ LABEL_NAMES = {
     7: "TUMOR",
 }
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--per-class", type=int, default=10)
+    parser = argparse.ArgumentParser(
+        description="Download a reproducible subset of Kather Texture 2016."
+    )
+    parser.add_argument(
+        "--per-class",
+        type=int,
+        default=10,
+        help="Images to save per class (default: 10).",
+    )
     parser.add_argument("--output", type=Path, default=Path("data/kather2016"))
     args = parser.parse_args()
+
+    if args.per_class < 1:
+        raise SystemExit("--per-class must be at least 1.")
 
     ds = load_dataset("YueFanXia/Kather-texture-2016", split="train")
     args.output.mkdir(parents=True, exist_ok=True)
 
     counts = {name: 0 for name in LABEL_NAMES.values()}
+    saved = 0
 
     for row in ds:
-        label = LABEL_NAMES[int(row["label"])]
-        if counts[label] >= args.per_class:
+        label_id = int(row["label"])
+        if label_id not in LABEL_NAMES:
             continue
-        out_dir = args.output / label
-        out_dir.mkdir(parents=True, exist_ok=True)
+
+        label_name = LABEL_NAMES[label_id]
+        if counts[label_name] >= args.per_class:
+            continue
+
+        class_dir = args.output / label_name
+        class_dir.mkdir(parents=True, exist_ok=True)
         image = row["image"].convert("RGB")
-        image.save(out_dir / f"{label.lower()}_{counts[label]:03d}.png")
-        counts[label] += 1
+        filename = class_dir / f"{label_name.lower()}_{counts[label_name]:03d}.png"
+        image.save(filename)
+        counts[label_name] += 1
+        saved += 1
+
         if all(v >= args.per_class for v in counts.values()):
             break
 
-    print(f"Saved to {args.output}")
+    print(f"Saved {saved} images to {args.output}")
     for label, count in counts.items():
         print(f"{label}: {count}")
+
 
 if __name__ == "__main__":
     main()
