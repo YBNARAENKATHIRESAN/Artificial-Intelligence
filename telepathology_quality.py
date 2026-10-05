@@ -68,9 +68,7 @@ def compression_experiment(
     for quality in qualities:
         output_path = output_dir / f"compressed_q{quality}.jpg"
         ok = cv2.imwrite(
-            str(output_path),
-            image,
-            [cv2.IMWRITE_JPEG_QUALITY, int(quality)],
+            str(output_path), image, [cv2.IMWRITE_JPEG_QUALITY, int(quality)]
         )
         if not ok:
             raise RuntimeError(f"Could not write {output_path}")
@@ -85,16 +83,15 @@ def compression_experiment(
             {
                 "jpeg_quality": quality,
                 "file_size_bytes": int(size),
-                "compression_ratio": round(
-                    original_file_size / size, 4
-                ) if size else None,
+                "compression_ratio": round(original_file_size / size, 4) if size else None,
                 "mse": round(
                     float(
                         np.mean(
                             (
                                 image.astype(np.float32)
                                 - compressed.astype(np.float32)
-                            ) ** 2
+                            )
+                            ** 2
                         )
                     ),
                     6,
@@ -109,7 +106,6 @@ def compression_experiment(
 def save_color_histogram(image: np.ndarray, path: Path) -> None:
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     path.parent.mkdir(parents=True, exist_ok=True)
-
     plt.figure(figsize=(9, 5))
     for idx, label in enumerate(("Red", "Green", "Blue")):
         plt.hist(rgb[..., idx].ravel(), bins=256, alpha=0.45, label=label)
@@ -154,7 +150,6 @@ def build_quality_status(
 ) -> tuple[str, list[str]]:
     reasons: list[str] = []
 
-    # Prototype engineering checks only; these are not clinical thresholds.
     if resolution["width_px"] < 512 or resolution["height_px"] < 512:
         reasons.append("low pixel dimensions")
     if sharpness["laplacian_variance"] < 50:
@@ -165,46 +160,35 @@ def build_quality_status(
         if float(compression["psnr_db"].iloc[0]) < 30:
             reasons.append("noticeable distortion even at JPEG Q=95")
 
-    status = (
-        "REVIEW REQUIRED"
-        if reasons
-        else "TECHNICALLY ACCEPTABLE (PROTOTYPE)"
-    )
-    return status, reasons
+    return ("REVIEW REQUIRED" if reasons else "TECHNICALLY ACCEPTABLE (PROTOTYPE)"), reasons
 
 
-def run_analysis(
-    input_path: str,
-    output_root: str,
-    qualities: list[int],
-) -> dict[str, Any]:
+def run_analysis(input_path: str, output_root: str, qualities: list[int]) -> dict[str, Any]:
     image = load_image(input_path)
     input_file = Path(input_path)
     output_dir = Path(output_root)
     output_dir.mkdir(parents=True, exist_ok=True)
+    source_file_size = input_file.stat().st_size
 
     resolution = analyze_resolution(image)
     color = analyze_color(image)
     sharpness = analyze_sharpness(image)
     compression = compression_experiment(
         image,
-        input_file.stat().st_size,
+        source_file_size,
         output_dir / "compressed",
         qualities,
     )
     save_color_histogram(image, output_dir / "rgb_histogram.png")
     save_compression_graphs(compression, output_dir)
 
-    status, reasons = build_quality_status(
-        resolution, color, sharpness, compression
-    )
+    status, reasons = build_quality_status(resolution, color, sharpness, compression)
 
     report = {
         "project": "Telepathology Image Analysis Tool",
-        "scope": (
-            "Technical image-quality assessment only; not clinical diagnosis."
-        ),
+        "scope": "Technical image-quality assessment only; not clinical diagnosis.",
         "input_file": input_file.name,
+        "source_file_bytes": int(source_file_size),
         "resolution": resolution,
         "color": color,
         "sharpness": sharpness,
@@ -220,24 +204,16 @@ def run_analysis(
 
     with open(output_dir / "quality_report.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
-
-    compression.to_csv(
-        output_dir / "compression_results.csv", index=False
-    )
+    compression.to_csv(output_dir / "compression_results.csv", index=False)
 
     return report
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description=(
-            "Telepathology image technical-quality analysis "
-            "using Python/OpenCV."
-        )
+        description="Telepathology image technical-quality analysis using Python/OpenCV."
     )
-    parser.add_argument(
-        "image", help="Path to a pathology slide image"
-    )
+    parser.add_argument("image", help="Path to a pathology slide image")
     parser.add_argument(
         "--output",
         default="outputs",
@@ -253,18 +229,11 @@ def main() -> None:
     args = parser.parse_args()
 
     if any(q < 1 or q > 100 for q in args.qualities):
-        raise SystemExit(
-            "JPEG quality values must be between 1 and 100."
-        )
+        raise SystemExit("JPEG quality values must be between 1 and 100.")
 
-    report = run_analysis(
-        args.image, args.output, args.qualities
-    )
+    report = run_analysis(args.image, args.output, args.qualities)
     print(json.dumps(report, indent=2))
-    print(
-        f"\nSaved results to: "
-        f"{os.path.abspath(args.output)}"
-    )
+    print(f"\nSaved results to: {os.path.abspath(args.output)}")
 
 
 if __name__ == "__main__":
